@@ -1,0 +1,56 @@
+name: CI Builds (Linux)
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: Build on Linux
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - name: Checkout repo and submodules
+      uses: actions/checkout@master
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install make g++ libssl-dev libpcsclite-dev pcscd pkgconf libcurl4-openssl-dev python3
+        ./thirdparty/tsduck/scripts/install-prerequisites.sh
+
+    - name: Generate TSDuck headers
+      run: |
+        mkdir -p thirdparty/tsduck/bin/include
+        python3 thirdparty/tsduck/scripts/build-tsduck-header.py tscore thirdparty/tsduck/bin/include/tscore.h
+        python3 thirdparty/tsduck/scripts/build-tsduck-header.py tsduck thirdparty/tsduck/bin/include/tsduck.h
+
+    - name: Build TSDuck
+      run: |
+        cd ./thirdparty/tsduck
+        make STATIC=1 NODOXYGEN=1 NOTEST=1 -j$(nproc)
+        sudo make install
+
+    - name: Build dantto4k
+      run: make STATIC_TSDUCK=1 -j$(nproc)
+
+    - name: Package
+      run: |
+        PACKAGE="dantto4k-linux"
+        mkdir -p "$PACKAGE"
+
+        cp build/dantto4k "$PACKAGE/"
+        cp -r ini/. "$PACKAGE/"
+
+        tar -czvf "$PACKAGE.tar.gz" "$PACKAGE"
+        echo "PACKAGE=$PACKAGE.tar.gz" >> $GITHUB_ENV
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: dantto4k-linux
+        path: ${{ env.PACKAGE }}
+        if-no-files-found: error

@@ -1,0 +1,13 @@
+name: CI Builds
+
+on:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Build on Ubuntu
+    uses: ./.github/workflows/build-linux.yml
+
+  windows:
+    name: Build on Windows
+    uses: ./.github/workflows/build-windows.yml

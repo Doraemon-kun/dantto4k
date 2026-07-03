@@ -1,0 +1,60 @@
+name: CI Builds (Windows)
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: Build on Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repo and submodules
+        uses: actions/checkout@master
+        with:
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@master
+        with:
+          vs-version: '[17.10,'
+
+      - name: Setup Python
+        uses: actions/setup-python@master
+        with:
+          python-version: '3.x'
+
+      - name: Generate TSDuck headers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $binInclude = "thirdparty\tsduck\bin\include"
+          New-Item -ItemType Directory -Force $binInclude | Out-Null
+          python "thirdparty\tsduck\scripts\build-tsduck-header.py" tscore "$binInclude\tscore.h"
+          python "thirdparty\tsduck\scripts\build-tsduck-header.py" tsduck "$binInclude\tsduck.h"
+
+      - name: Build dantto4k
+        run: |
+          cd msvc
+          msbuild dantto4k.sln /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = "dantto4k-win64"
+          $stage = Join-Path $env:RUNNER_TEMP $package
+          New-Item -ItemType Directory -Path $stage | Out-Null
+
+          Copy-Item msvc\x64\Release\dantto4k.exe $stage
+          Copy-Item msvc\x64\Release\BonDriver_dantto4k.dll $stage
+          Copy-Item ini\* $stage -Recurse
+
+          Compress-Archive -Path "$stage\*" -DestinationPath "$package.zip" -Force
+          "PACKAGE=$package.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dantto4k-windows
+          path: ${{ env.PACKAGE }}
+          if-no-files-found: error
