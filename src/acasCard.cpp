@@ -36,6 +36,9 @@ uint32_t AcasCard::getA0AuthKcl(sha256_t& output) {
     }
 
     auto a0data = response.getData();
+    if (a0data.size() < 14) {
+        return SCARD_F_INTERNAL_ERROR;
+    }
     std::vector<uint8_t> a0response(a0data.begin() + 0x06, a0data.begin() + 0x06 + 0x08);
     std::vector<uint8_t> a0hash(a0data.begin() + 0x0e, a0data.end());
 
@@ -132,6 +135,12 @@ bool AcasCard::ecm(const std::vector<uint8_t>& ecm, DecryptionKey& output) {
             }
 
             auto ecmData = response.getData();
+            if (ecmData.size() < 6) {
+                return false;
+            }
+            if (ecm.size() < 27) {
+                return false;
+            }
             std::vector<uint8_t> ecmResponse(ecmData.begin() + 0x06, ecmData.end());
             std::vector<uint8_t> ecmInit(ecm.begin() + 0x04, ecm.begin() + 0x04 + 0x17);
 
