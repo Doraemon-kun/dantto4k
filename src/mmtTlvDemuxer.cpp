@@ -43,6 +43,10 @@ void MmtTlvDemuxer::setCasHandler(std::unique_ptr<CasHandler> handler) {
     casHandler = std::move(handler);
 }
 
+void MmtTlvDemuxer::setAssumeDescrambled(bool value) {
+    assumeDescrambled = value;
+}
+
 DemuxStatus MmtTlvDemuxer::demux(Common::ReadStream& stream) {
     size_t cur = stream.getPos();
 
@@ -144,11 +148,13 @@ DemuxStatus MmtTlvDemuxer::demux(Common::ReadStream& stream) {
         if (mmtp.extensionHeaderScrambling.has_value()) {
             if (mmtp.extensionHeaderScrambling->encryptionFlag == EncryptionFlag::ODD ||
                 mmtp.extensionHeaderScrambling->encryptionFlag == EncryptionFlag::EVEN) {
-                if (!casHandler) {
-                    return DemuxStatus::WattingForEcm;
-                }
-                if (!casHandler->decrypt(mmtp)) {
-                    return DemuxStatus::WattingForEcm;
+                if (!assumeDescrambled) {
+                    if (!casHandler) {
+                        return DemuxStatus::WattingForEcm;
+                    }
+                    if (!casHandler->decrypt(mmtp)) {
+                        return DemuxStatus::WattingForEcm;
+                    }
                 }
             }
         }

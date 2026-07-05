@@ -14,6 +14,9 @@ Usage:
                                 Specify the smart card reader to use
       --customWinscardDLL arg   Specify the path to a winscard.dll
       --disableADTSConversion   Disable ADTS conversion
+      --frontend-descrambled    Assume the input stream was already
+                                descrambled by the frontend, and only
+                                remux MMT/TLV to MPEG-2 TS
       --no-progress             Disable progress display
       --no-stats                Disable packet statistics
       --help                    Show help
