@@ -1,4 +1,4 @@
-name: build
+name: CI Builds
 
 on:
   push:
@@ -6,86 +6,113 @@ on:
     tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   linux:
+    name: Build on Linux
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout repo and submodules
+      uses: actions/checkout@main
       with:
-        submodules: true
+        submodules: recursive
+
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y make g++ libpcsclite-dev pkgconf
-    - name: Install tsduck
+        sudo apt install make g++ libssl-dev libpcsclite-dev pcscd pkgconf libcurl4-openssl-dev python3
+        ./thirdparty/tsduck/scripts/install-prerequisites.sh
+
+    - name: Generate TSDuck headers
       run: |
-        cd thirdparty/tsduck
-        scripts/install-prerequisites.sh
-        make -j10
-        sudo make install
-    - name: make
-      run: make
+        mkdir -p thirdparty/tsduck/bin/include
+        python3 thirdparty/tsduck/scripts/build-tsduck-header.py tscore thirdparty/tsduck/bin/include/tscore.h
+        python3 thirdparty/tsduck/scripts/build-tsduck-header.py tsduck thirdparty/tsduck/bin/include/tsduck.h
 
-  windows:
-    runs-on: windows-latest
-    permissions:
-      contents: write
-
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - uses: actions/setup-python@v5
-      with:
-        python-version: "3.x"
-    - uses: microsoft/setup-msbuild@v2
-
-    - name: Build static TSDuck
-      env:
-        _CL_: /D_USE_STD_VECTOR_ALGORITHMS=0 /MT /WX-
-      run: msbuild thirdparty\tsduck\scripts\msvc\tsduck.sln /m /t:tsducklib /p:Configuration=Release /p:Platform=x64
+    - name: Build TSDuck
+      run: |
+        cd ./thirdparty/tsduck
+        make STATIC=1 NODOXYGEN=1 NOTEST=1 -j$(nproc)
 
     - name: Build dantto4k
-      run: msbuild msvc\dantto4k.sln /m /p:Configuration=Release /p:Platform=x64
+      run: make STATIC_TSDUCK=1 -j$(nproc)
 
-    - name: Package Windows x64
-      shell: pwsh
+    - name: Package
       run: |
-        $ErrorActionPreference = "Stop"
-        $packageDir = "dist\dantto4k"
-        New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+        PACKAGE="dantto4k-linux"
+        mkdir -p "$PACKAGE"
 
-        Copy-Item "msvc\x64\Release\dantto4k.exe" $packageDir
-        Copy-Item "msvc\x64\Release\BonDriver_dantto4k.dll" $packageDir
-        Copy-Item "ini\BonDriver_dantto4k.ini" $packageDir
+        cp build/dantto4k "$PACKAGE/"
+        cp -r ini/. "$PACKAGE/"
 
-        $version = "${{ github.ref_name }}" -replace '[^A-Za-z0-9._-]', '-'
-        $archiveName = "dantto4k-$version-windows-x64.zip"
-        $archivePath = "dist\$archiveName"
-        Compress-Archive -Path "$packageDir\*" -DestinationPath $archivePath -Force
+        echo "PACKAGE_DIR=$PACKAGE" >> $GITHUB_ENV
 
-        "PACKAGE_PATH=$archivePath" >> $env:GITHUB_ENV
-        "ARTIFACT_NAME=dantto4k-$version-windows-x64" >> $env:GITHUB_ENV
-
-    - uses: actions/upload-artifact@v4
+    - name: Upload artifact
+      uses: actions/upload-artifact@main
       with:
-        name: ${{ env.ARTIFACT_NAME }}
-        path: dist\dantto4k
+        name: dantto4k-linux
+        path: ${{ env.PACKAGE_DIR }}
+        if-no-files-found: error
+        
+  windows:
+    name: Build on Windows
+    runs-on: windows-latest
 
-    - name: Publish GitHub release
-      if: startsWith(github.ref, 'refs/tags/')
-      shell: pwsh
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        $ErrorActionPreference = "Stop"
-        $tag = "${{ github.ref_name }}"
-        gh release view $tag *> $null
-        if ($LASTEXITCODE -eq 0) {
-          gh release upload $tag $env:PACKAGE_PATH --clobber
-        }
-        else {
-          gh release create $tag $env:PACKAGE_PATH --title $tag --notes "Windows x64 static build"
-        }
+    steps:
+      - name: Checkout repo and submodules
+        uses: actions/checkout@main
+        with:
+          submodules: recursive
+      
+      - name: Setup Python
+        uses: actions/setup-python@main
+        with:
+          python-version: "3.x"
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@main
+        with:
+          vs-version: "[17.10,"
+
+      - name: Generate TSDuck headers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binInclude = "thirdparty\tsduck\bin\include"
+          New-Item -ItemType Directory -Force $binInclude | Out-Null
+          python "thirdparty\tsduck\scripts\build-tsduck-header.py" tscore "$binInclude\tscore.h"
+          python "thirdparty\tsduck\scripts\build-tsduck-header.py" tsduck "$binInclude\tsduck.h"
+
+      - name: Build TSDuck
+        env:
+          _CL_: /D_USE_STD_VECTOR_ALGORITHMS=0 /MT /WX-
+        run: msbuild thirdparty\tsduck\scripts\msvc\tsduck.sln /m /t:tsducklib /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
+
+      - name: Build dantto4k
+        run: msbuild msvc\dantto4k.sln /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $package = "dantto4k-win64"
+          $stage = Join-Path $env:RUNNER_TEMP $package
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          Copy-Item msvc\x64\Release\dantto4k.exe $stage
+          Copy-Item msvc\x64\Release\BonDriver_dantto4k.dll $stage
+          Copy-Item ini\BonDriver_dantto4k.ini $stage -Recurse
+
+          "PACKAGE_DIR=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: dantto4k-windows
+          path: ${{ env.PACKAGE_DIR }}
+          if-no-files-found: error

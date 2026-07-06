@@ -36,9 +36,9 @@
 
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(DanttoTSDuckIncludeDirs);$(TSDuckBinRootDir)include\;$(SolutionDir)..\thirdparty\asio\asio\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>TSDUCK_STATIC_LIBRARY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(DanttoTSDuckIncludeDirs);$(TSDuckBinRootDir)include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>TSDUCK_STATIC_LIBRARY;TSCORE_STATIC_LIBRARY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/bigobj /wd4819 /Wv:17 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(TSDuckOutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
